@@ -116,7 +116,7 @@ def Knn2(k, train, test):
         for i in test:
             nn = {}
             for j in train:
-                dis = dist(j[:(len(j))],i)
+                dis = dist(j[:(len(j)-1)],i)
                 if len(nn.keys()) < k and dis not in nn:
                     nn[dis] = j
                 elif len(nn.keys()) == k and dis not in nn and min(nn.keys()) > dis:
