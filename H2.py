@@ -1,11 +1,10 @@
-
 from nltk.stem import *
 import numpy as np
 import sklearn as sk
 import pandas as pd
+from scipy import spatial
 import csv
 from sklearn.feature_extraction.text import CountVectorizer
-
 
 # implment countVectorization
 def NPcountVector(Docs, ans=None):
@@ -21,13 +20,9 @@ def NPcountVector(Docs, ans=None):
             l.append(ans[c])
         nra.append(l)
         c += 1
-
     npCV = np.array(nra)
-    # print(npCV)
     npcvT = npCV.T
-    # print(npCV)
     sumc = np.sum(npcvT,axis=1)
-    # print(sumc)
     mx = max(sumc)
     nwl = []
     for s in range(len(sumc)-1):
@@ -35,8 +30,6 @@ def NPcountVector(Docs, ans=None):
             nwl.append(npcvT[s])
     nwl=np.array(nwl)
     nwlt = nwl.T
-
-    # # print(nwlt)
 
     return (npCV,sumc)
 def stemData(path,max=None):
@@ -62,7 +55,6 @@ def stemData(path,max=None):
         p += 1
     return (DataStem,pars,ansKey)
 
-
 def uploadData(val):
     with open('ans.csv', 'a', encoding='UTF8') as f:
         writer = csv.writer(f)
@@ -78,28 +70,12 @@ def Knn(k, train, test, ans):
     correct = 0
     wrong = 0
     for i in test:
-#         print("I",i)
-        nn = {}
-        for j in train:
-#             print("J",j)
-            dis = dist(j,i)
-            if len(nn.keys()) < k and dis not in nn:
-                nn[dis] = j
-            elif len(nn.keys()) == k and dis not in nn and min(nn.keys()) > dis:
-                del nn[min(nn.keys())]
-                nn[dis] = j
-        l ={}
+        diff = train - i
+        dist = np.sqrt(np.sum(diff**2,axis=-1))
+        indx = np.argmin(dist)
+        l = {}
         maxsize = 0
-        pred = 0
-        for m in nn.keys():
-            if(nn[m][-1] in l):
-                l[nn[m][-1]].append(m)
-            else:
-                l[nn[m][-1]] = [m]
-            if len(l[nn[m][-1]]) > maxsize:
-                maxsize = len(l[nn[m][-1]])
-                pred = nn[m][-1]
-            # print(pred)
+        pred = train[indx][-1]
         if pred == i[-1]:
             correct += 1
         else:
@@ -110,45 +86,28 @@ def Knn(k, train, test, ans):
 def Knn2(k, train, test):
     correct = 0
     wrong = 0
-    open('ans.csv', 'w')
-    
+    c =0
     with open('ans.csv', 'a', encoding='UTF8') as f:
         for i in test:
-            nn = {}
-            for j in train:
-                dis = dist(j[:(len(j)-1)],i)
-                if len(nn.keys()) < k and dis not in nn:
-                    nn[dis] = j
-                elif len(nn.keys()) == k and dis not in nn and min(nn.keys()) > dis:
-                    del nn[min(nn.keys())]
-                    nn[dis] = j
-            l = {}
+            diff = train - i
+            dist = np.sqrt(np.sum(diff**2,axis=-1))
+            indx = np.argmin(dist)
             maxsize = 0
-            pred = 0
-            for m in nn.keys():
-                if(nn[m][-1] in l):
-                    l[nn[m][-1]].append(m)
-                else:
-                    l[nn[m][-1]] = [m]
-                if len(l[nn[m][-1]]) > maxsize:
-                    maxsize = len(l[nn[m][-1]])
-                    pred = nn[m][-1]
+            pred = train[indx][-1]
             writer = csv.writer(f)
             writer.writerow([int(pred)])
-            
+
 def cleanup(ra,row):
     ind = []
     for i in range(len(row)-1):
-        if(row[i] >= (0.5*max(row)) or row[i] <= 2.0):
+        if(row[i] >= (0.5*max(row)) or row[i] <= 4.0):
             ind.append(i)
     op = np.delete(ra,ind,1)
     return op
 
-
-
 # word processing
-maxL = 6000
-train = stemData("1663973187_4812264_new_train.csv",maxL)
+maxL = 1000
+train = stemData("/Users/rediettadesse/Desktop/CS/CS484/H2/1663973187_4812264_new_train.csv",maxL)
 trainingData = train[0]
 trainingDocs = train[1]
 trainAnskey = train[2]
@@ -158,39 +117,42 @@ traingVectorVals = tp[0]
 traingVectorVals = cleanup(traingVectorVals,tp[1])
 
 print(traingVectorVals.shape,traingVectorVals[0])
-test = stemData("1664308636_4631202_new_test.csv",maxL)
+test = stemData("/Users/rediettadesse/Desktop/CS/CS484/H2/1664308636_4631202_new_test.csv",maxL)
 testingData = train[0]
 testingDocs = train[1]
 testp = NPcountVector(trainingDocs)
+print(testp[0].shape,testp[0][0]) 
 testingVectorVals = testp[0]
 testingVectorVals = cleanup(testingVectorVals,testp[1])
+print("processing")
 
+# Cross validation
+partitionSize = round(len(traingVectorVals)*0.1)
+optimalK = {}
 
-Knn2(1,traingVectorVals,testingVectorVals)
+for k in range(1,5):
+    print(k)
+    for l in range(0,len(traingVectorVals),partitionSize):
+        testPartition = traingVectorVals[l:l+partitionSize]
+        trainPartition = np.concatenate((traingVectorVals[:l],traingVectorVals[l+partitionSize:]),axis=0)
+        a = Knn(k,trainPartition,testPartition,trainAnskey)
+        if k in optimalK:
+            optimalK[k].append(a)
+        else:
+            optimalK[k] = [a]
+bestK = 0
+bestavg = 0
+for m in optimalK.keys():
+    avg = sum(optimalK[m])/(len(optimalK[m]))
+    if(bestavg < avg):
+        bestK = m
+        bestavg = avg
+print("BestK:",bestK,"avg:",(bestavg*100))
 
-
-# # Cross validation
-# partitionSize = round(len(traingVectorVals)*0.1)
-# optimalK = {}
-
-# for k in range(1,5):
-#     print(k)
-#     for l in range(0,len(traingVectorVals),partitionSize):
-#         testPartition = traingVectorVals[l:l+partitionSize]
-#         trainPartition = np.concatenate((traingVectorVals[:l],traingVectorVals[l+partitionSize:]),axis=0)
-#         a = Knn(k,trainPartition,testPartition,trainAnskey)
-#         if k in optimalK:
-#             optimalK[k].append(a)
-#         else:
-#             optimalK[k] = [a]
-# bestK = 0
-# bestavg = 0
-# for m in optimalK.keys():
-#     avg = sum(optimalK[m])/(len(optimalK[m]))
-#     if(bestavg < avg):
-#         bestK = m
-#         bestavg = avg
-# print("BestK:",bestK,"avg:",(bestavg*100))
-
-
-
+fl = open('ans.csv', 'w')
+fl.close() 
+ini = 0
+perc = 0.10
+for l in range(0,(testingVectorVals.shape[0]),round(testingVectorVals.shape[0]*perc)):
+    print("From",l,"To",l+round(testingVectorVals.shape[0]*perc))
+    Knn2(bestK,traingVectorVals,testingVectorVals[l:l+round(testingVectorVals.shape[0]*perc)])
